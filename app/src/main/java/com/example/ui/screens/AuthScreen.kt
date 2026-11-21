@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -52,12 +54,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.model.CountryInfo
 import com.example.data.model.CountryRegistry
 import com.example.ui.theme.BorderDark
@@ -73,6 +78,7 @@ import com.example.ui.theme.TextSecondary
 @Composable
 fun AuthScreen(
     initialTab: Int = 0, // 0 = Login, 1 = Register
+    isLoading: Boolean = false,
     onLogin: (String, String) -> Unit,
     onRegister: (String, String, String, String, String, String, String, String, String?) -> Unit
 ) {
@@ -115,6 +121,16 @@ fun AuthScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.vmax_launcher_icon),
+                        contentDescription = "V-Max Logo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .border(1.5.dp, CyanAccent.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "V-Max",
                         fontSize = 28.sp,
@@ -319,6 +335,16 @@ fun AuthScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.vmax_launcher_icon),
+                        contentDescription = "V-Max Logo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .border(1.5.dp, CyanAccent.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "V-Max",
                         fontSize = 28.sp,
@@ -327,7 +353,7 @@ fun AuthScreen(
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "Create your account with email OTP verification",
+                        text = "Create your account with Gmail OTP verification",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
@@ -499,7 +525,7 @@ fun AuthScreen(
                             Icon(Icons.Default.Shield, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "A 6-digit verification code will be generated to verify your email. Once verified, all account details remain permanently saved.",
+                                text = "A 6-digit verification code will be sent directly to your Gmail inbox. Registration completes only after entering the valid OTP (strictly 1 account per Gmail).",
                                 fontSize = 10.sp,
                                 color = TextSecondary,
                                 lineHeight = 13.sp
@@ -522,6 +548,7 @@ fun AuthScreen(
                                     regReferralCode.ifBlank { null }
                                 )
                             },
+                            enabled = !isLoading,
                             colors = ButtonDefaults.buttonColors(containerColor = CyanAccent, contentColor = Color.Black),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
@@ -529,7 +556,17 @@ fun AuthScreen(
                                 .height(48.dp)
                                 .testTag("submit_register_button")
                         ) {
-                            Text("Create Account & Send OTP Code", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color.Black,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Sending OTP to Gmail...", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            } else {
+                                Text("Create Account & Send OTP Code", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
                         }
                     }
                 }
@@ -543,26 +580,29 @@ fun AuthScreen(
 @Composable
 fun OtpVerificationDialog(
     userEmail: String,
-    onVerifyOtp: (String) -> Unit
+    isLoading: Boolean = false,
+    onVerifyOtp: (String) -> Unit,
+    onResendOtp: () -> Unit = {},
+    onCancel: () -> Unit = {}
 ) {
     var otpInput by remember { mutableStateOf("") }
 
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = { if (!isLoading) onCancel() },
         title = {
-            Text("Verify Email OTP Code", fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text("Verify Gmail OTP Code", fontWeight = FontWeight.Bold, color = TextPrimary)
         },
         text = {
             Column {
                 Text(
-                    text = "A 6-digit verification code has been sent to $userEmail. Please enter it to activate your account and access your dashboard.",
+                    text = "A 6-digit verification code was sent to $userEmail. Enter the exact code from your Gmail inbox (or Spam folder) to complete registration.",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 OutlinedTextField(
                     value = otpInput,
-                    onValueChange = { if (it.length <= 6) otpInput = it },
+                    onValueChange = { if (it.length <= 6 && it.all { ch -> ch.isDigit() }) otpInput = it },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     placeholder = { Text("Enter 6-digit code", color = TextMuted) },
                     singleLine = true,
@@ -576,16 +616,43 @@ fun OtpVerificationDialog(
                         .fillMaxWidth()
                         .testTag("otp_code_input")
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = onCancel,
+                        enabled = !isLoading
+                    ) {
+                        Text("Change Gmail", color = TextMuted, fontSize = 12.sp)
+                    }
+                    TextButton(
+                        onClick = onResendOtp,
+                        enabled = !isLoading
+                    ) {
+                        Text("Resend OTP", color = GoldAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = { onVerifyOtp(otpInput) },
-                enabled = otpInput.length == 6,
+                enabled = otpInput.length == 6 && !isLoading,
                 colors = ButtonDefaults.buttonColors(containerColor = CyanAccent),
                 modifier = Modifier.testTag("submit_otp_button")
             ) {
-                Text("Verify & Activate", color = Color.Black, fontWeight = FontWeight.Bold)
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.Black,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Text(if (isLoading) "Verifying..." else "Verify & Register", color = Color.Black, fontWeight = FontWeight.Bold)
             }
         },
         containerColor = SurfaceCard

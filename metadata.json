@@ -1,6 +1,6 @@
 {
-  "name": "V-Max",
-  "description": "V-Max Profit Share — High-end crypto & profit sharing platform with automated Binance Pay deposits, USDT BSC BEP20 withdrawals, daily rewards lottery, and advanced admin controls.",
+  "name": "V-Max Profit",
+  "description": "V-Max Profit — Crypto profit sharing platform with automated BEP20 USDT BscScan verification, withdrawals, daily claims, Lucky Spin lottery rewards, and live Render backend sync.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -217,4 +217,38 @@ class LuckySpinAndSecurityTest {
         assertEquals(1, bonusTxAfter.size)
         assertEquals(10.0, bonusTxAfter.first().amount, 0.0001)
     }
+
+    @Test
+    fun finalizeVerifiedRegistration_allowsOnlyOneAccountPerGmail() = runBlocking {
+        val first = repository.finalizeVerifiedRegistration(
+            name = "User One",
+            email = "SingleAccount@Gmail.com",
+            passwordPlain = "pass123",
+            country = "United States",
+            districtState = "CA",
+            cityUpazila = "SF",
+            fullAddress = "100 Main",
+            referredByCode = null,
+            serverUserId = "USR-111222",
+            serverReferralCode = "VMAX-111222"
+        )
+        assertTrue(first.isSuccess)
+        val created = first.getOrThrow()
+        assertTrue(created.isEmailVerified)
+        assertEquals(0.0, created.availableBalance, 0.0001)
+        assertEquals("USR-111222", created.id)
+
+        val duplicate = repository.finalizeVerifiedRegistration(
+            name = "Duplicate Attempt",
+            email = "  singleaccount@gmail.com ",
+            passwordPlain = "pass456",
+            country = "Canada",
+            districtState = "ON",
+            cityUpazila = "Toronto",
+            fullAddress = "200 King",
+            referredByCode = null
+        )
+        assertTrue(duplicate.isFailure)
+        assertTrue(duplicate.exceptionOrNull()?.message?.contains("Only one account per Gmail") == true)
+    }
 }

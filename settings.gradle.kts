@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "V-Max"
+rootProject.name = "V-Max Profit"
 
 include(":app")

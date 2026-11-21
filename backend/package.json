@@ -1,7 +1,7 @@
 {
-  "name": "nft-trade-backend",
-  "version": "1.0.0",
-  "description": "Production Node.js & Express Backend for NFT TRADE Platform with Binance Pay V2, Nodemailer OTP, and Realtime SSE Stream",
+  "name": "v-max-profit-backend",
+  "version": "2.0.0",
+  "description": "Live Node.js & Express Backend for V-Max Profit Platform with BEP20 BscScan Verification, Gmail OTP, and Web Portal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

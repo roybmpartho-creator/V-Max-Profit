@@ -14,6 +14,7 @@ import com.example.data.db.TransactionEntity
 import com.example.data.db.UserEntity
 import com.example.data.db.WithdrawalEntity
 import com.example.data.model.SpinOutcome
+import com.example.data.network.LiveApiClient
 import com.example.data.repository.MarketplaceRepository
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -62,6 +63,17 @@ sealed class SpinUiState {
     data class Error(val message: String) : SpinUiState()
 }
 
+data class PendingRegistrationData(
+    val name: String,
+    val email: String,
+    val pass: String,
+    val country: String,
+    val district: String,
+    val city: String,
+    val address: String,
+    val refCode: String?
+)
+
 class MarketplaceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: MarketplaceRepository
@@ -86,8 +98,11 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
     private val _snackbarMessage = MutableSharedFlow<String>()
     val snackbarMessage: SharedFlow<String> = _snackbarMessage.asSharedFlow()
 
-    private val _pendingRegistrationUserId = MutableStateFlow<String?>(null)
-    val pendingRegistrationUserId: StateFlow<String?> = _pendingRegistrationUserId.asStateFlow()
+    private val _pendingRegistration = MutableStateFlow<PendingRegistrationData?>(null)
+    val pendingRegistration: StateFlow<PendingRegistrationData?> = _pendingRegistration.asStateFlow()
+
+    private val _isAuthLoading = MutableStateFlow(false)
+    val isAuthLoading: StateFlow<Boolean> = _isAuthLoading.asStateFlow()
 
     private val _depositUiState = MutableStateFlow<DepositUiState>(DepositUiState.Idle)
     val depositUiState: StateFlow<DepositUiState> = _depositUiState.asStateFlow()
@@ -177,6 +192,9 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
 
         viewModelScope.launch {
             repository.initializeDefaultDataIfEmpty()
+        }
+        viewModelScope.launch {
+            LiveApiClient.wakeUpServer()
         }
     }
 
@@ -285,6 +303,10 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
             result.onSuccess { dep ->
                 _depositUiState.value = DepositUiState.Success(dep)
                 showMessage("Deposit verified! +$${String.format(Locale.US, "%.2f", dep.amount)} USDT credited instantly to your balance.")
+                val userEmail = currentUser.value?.email ?: ""
+                viewModelScope.launch {
+                    LiveApiClient.syncDeposit(uid, userEmail, dep.amount, dep.txHash)
+                }
             }.onFailure { err ->
                 val msg = err.message ?: "Deposit verification failed."
                 _depositUiState.value = DepositUiState.Error(msg)
@@ -339,6 +361,10 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
             val result = repository.submitWithdrawal(uid, amount, method, destinationWallet, passwordPlain)
             result.onSuccess { wd ->
                 showMessage("Withdrawal request for $${wd.amount} USDT submitted (${wd.method} - Net: $${wd.netAmount} USDT). Status: Processing (Awaiting Admin Approval).")
+                val userEmail = currentUser.value?.email ?: ""
+                viewModelScope.launch {
+                    LiveApiClient.syncWithdrawal(uid, userEmail, wd.amount, wd.method, wd.destinationWallet)
+                }
                 onSuccess()
             }.onFailure {
                 showMessage(it.message ?: "Withdrawal request failed.")
@@ -397,8 +423,13 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
         address: String,
         refCode: String?
     ) {
-        if (name.isBlank() || email.isBlank() || pass.isBlank()) {
+        val cleanEmail = email.trim().lowercase()
+        if (name.isBlank() || cleanEmail.isBlank() || pass.isBlank()) {
             showMessage("Please fill in all required fields.")
+            return
+        }
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
+            showMessage("Please enter a valid Gmail address.")
             return
         }
         if (pass != confirmPass) {
@@ -409,30 +440,109 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
             showMessage("Password must be at least 6 characters.")
             return
         }
+        if (_isAuthLoading.value) return
 
         viewModelScope.launch {
-            val res = repository.registerUser(name, email, pass, country, district, city, address, refCode)
-            res.onSuccess { user ->
-                _pendingRegistrationUserId.value = user.id
-                showMessage("Registration successful! Enter the 6-digit verification OTP sent to ${user.email} (Demo OTP: ${user.emailOtp})")
-                navigateTo(Screen.AUTH_OTP)
-            }.onFailure {
-                showMessage(it.message ?: "Registration failed.")
+            _isAuthLoading.value = true
+            try {
+                if (repository.isEmailAlreadyRegistered(cleanEmail)) {
+                    showMessage("An account with this Gmail already exists. Only one account per Gmail is allowed.")
+                    return@launch
+                }
+
+                val otpResponse = LiveApiClient.requestRegistrationOtp(
+                    name = name,
+                    email = cleanEmail,
+                    passwordPlain = pass,
+                    country = country,
+                    referralCode = refCode
+                )
+
+                if (otpResponse.success) {
+                    _pendingRegistration.value = PendingRegistrationData(
+                        name = name.trim(),
+                        email = cleanEmail,
+                        pass = pass,
+                        country = country,
+                        district = district,
+                        city = city,
+                        address = address,
+                        refCode = refCode
+                    )
+                    showMessage("OTP sent successfully to $cleanEmail! Check your Gmail inbox or Spam folder.")
+                    navigateTo(Screen.AUTH_OTP)
+                } else {
+                    showMessage(otpResponse.message)
+                }
+            } finally {
+                _isAuthLoading.value = false
             }
         }
     }
 
-    fun verifyOtp(enteredOtp: String) {
-        val uid = _pendingRegistrationUserId.value ?: _currentUserId.value ?: return
+    fun resendOtp() {
+        val pending = _pendingRegistration.value ?: return
+        if (_isAuthLoading.value) return
+
         viewModelScope.launch {
-            val res = repository.verifyEmailOtp(uid, enteredOtp)
-            res.onSuccess { user ->
-                _currentUserId.value = user.id
-                _pendingRegistrationUserId.value = null
-                showMessage("Email verified successfully! Welcome to V-Max Profit Share.")
-                navigateTo(Screen.HOME)
-            }.onFailure {
-                showMessage(it.message ?: "Verification failed.")
+            _isAuthLoading.value = true
+            try {
+                val res = LiveApiClient.resendRegistrationOtp(pending.email)
+                showMessage(res.message)
+            } finally {
+                _isAuthLoading.value = false
+            }
+        }
+    }
+
+    fun cancelOtpVerification() {
+        _pendingRegistration.value = null
+        navigateBack()
+    }
+
+    fun verifyOtp(enteredOtp: String) {
+        val pending = _pendingRegistration.value ?: run {
+            showMessage("Registration session expired. Please register again.")
+            navigateTo(Screen.AUTH_REGISTER)
+            return
+        }
+        if (enteredOtp.trim().length != 6) {
+            showMessage("Please enter the 6-digit OTP sent to your Gmail.")
+            return
+        }
+        if (_isAuthLoading.value) return
+
+        viewModelScope.launch {
+            _isAuthLoading.value = true
+            try {
+                val verifyRes = LiveApiClient.verifyRegistrationOtp(pending.email, enteredOtp.trim())
+                if (!verifyRes.success) {
+                    showMessage(verifyRes.message)
+                    return@launch
+                }
+
+                val saveRes = repository.finalizeVerifiedRegistration(
+                    name = pending.name,
+                    email = pending.email,
+                    passwordPlain = pending.pass,
+                    country = pending.country,
+                    districtState = pending.district,
+                    cityUpazila = pending.city,
+                    fullAddress = pending.address,
+                    referredByCode = pending.refCode,
+                    serverUserId = verifyRes.userId,
+                    serverReferralCode = verifyRes.referralCode
+                )
+                saveRes.onSuccess { user ->
+                    _currentUserId.value = user.id
+                    _pendingRegistration.value = null
+                    showMessage("Email verified & registration complete! Welcome to V-Max Profit.")
+                    navigateTo(Screen.HOME)
+                }.onFailure { err ->
+                    showMessage(err.message ?: "Account could not be finalized.")
+                }
+            } finally {
+                _isAuthLoading.value = false
             }
         }
     }

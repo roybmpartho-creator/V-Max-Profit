@@ -77,6 +77,8 @@ fun NFTTradeApp(viewModel: MarketplaceViewModel = viewModel()) {
     val userSpinHistory by viewModel.userSpinHistory.collectAsStateWithLifecycle()
     val referredUsers by viewModel.referredUsers.collectAsStateWithLifecycle()
     val qualifiedReferralIds by viewModel.qualifiedReferralIds.collectAsStateWithLifecycle()
+    val pendingRegistration by viewModel.pendingRegistration.collectAsStateWithLifecycle()
+    val isAuthLoading by viewModel.isAuthLoading.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -130,17 +132,22 @@ fun NFTTradeApp(viewModel: MarketplaceViewModel = viewModel()) {
                 when (currentScreen) {
                     Screen.AUTH_REGISTER -> AuthScreen(
                         initialTab = 1,
+                        isLoading = isAuthLoading,
                         onLogin = { email, pass -> viewModel.login(email, pass) },
                         onRegister = { name, email, pass, confirm, country, district, city, addr, ref ->
                             viewModel.register(name, email, pass, confirm, country, district, city, addr, ref)
                         }
                     )
                     Screen.AUTH_OTP -> OtpVerificationDialog(
-                        userEmail = "your registered email",
-                        onVerifyOtp = { otp -> viewModel.verifyOtp(otp) }
+                        userEmail = pendingRegistration?.email ?: "your Gmail",
+                        isLoading = isAuthLoading,
+                        onVerifyOtp = { otp -> viewModel.verifyOtp(otp) },
+                        onResendOtp = { viewModel.resendOtp() },
+                        onCancel = { viewModel.cancelOtpVerification() }
                     )
                     else -> AuthScreen(
                         initialTab = 0,
+                        isLoading = isAuthLoading,
                         onLogin = { email, pass -> viewModel.login(email, pass) },
                         onRegister = { name, email, pass, confirm, country, district, city, addr, ref ->
                             viewModel.register(name, email, pass, confirm, country, district, city, addr, ref)
@@ -207,6 +214,7 @@ fun NFTTradeApp(viewModel: MarketplaceViewModel = viewModel()) {
 
                 Screen.AUTH_LOGIN -> AuthScreen(
                     initialTab = 0,
+                    isLoading = isAuthLoading,
                     onLogin = { email, pass -> viewModel.login(email, pass) },
                     onRegister = { name, email, pass, confirm, country, district, city, addr, ref ->
                         viewModel.register(name, email, pass, confirm, country, district, city, addr, ref)
@@ -215,6 +223,7 @@ fun NFTTradeApp(viewModel: MarketplaceViewModel = viewModel()) {
 
                 Screen.AUTH_REGISTER -> AuthScreen(
                     initialTab = 1,
+                    isLoading = isAuthLoading,
                     onLogin = { email, pass -> viewModel.login(email, pass) },
                     onRegister = { name, email, pass, confirm, country, district, city, addr, ref ->
                         viewModel.register(name, email, pass, confirm, country, district, city, addr, ref)
@@ -222,10 +231,12 @@ fun NFTTradeApp(viewModel: MarketplaceViewModel = viewModel()) {
                 )
 
                 Screen.AUTH_OTP -> {
-                    // Show OTP Verification dialog
                     OtpVerificationDialog(
-                        userEmail = currentUser?.email ?: "your registered email",
-                        onVerifyOtp = { otp -> viewModel.verifyOtp(otp) }
+                        userEmail = pendingRegistration?.email ?: currentUser?.email ?: "your Gmail",
+                        isLoading = isAuthLoading,
+                        onVerifyOtp = { otp -> viewModel.verifyOtp(otp) },
+                        onResendOtp = { viewModel.resendOtp() },
+                        onCancel = { viewModel.cancelOtpVerification() }
                     )
                 }
 

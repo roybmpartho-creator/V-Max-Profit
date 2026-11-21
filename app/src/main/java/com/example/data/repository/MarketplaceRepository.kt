@@ -290,6 +290,67 @@ class MarketplaceRepository(val dao: AppDao) {
 
     fun getQualifiedReferralUserIds(code: String): Flow<List<String>> = dao.getQualifiedReferralUserIds(code)
 
+    suspend fun isEmailAlreadyRegistered(email: String): Boolean {
+        val normalized = email.trim().lowercase()
+        return dao.getUserByEmail(normalized) != null
+    }
+
+    suspend fun finalizeVerifiedRegistration(
+        name: String,
+        email: String,
+        passwordPlain: String,
+        country: String,
+        districtState: String,
+        cityUpazila: String,
+        fullAddress: String,
+        referredByCode: String?,
+        serverUserId: String? = null,
+        serverReferralCode: String? = null
+    ): Result<UserEntity> {
+        val normalizedEmail = email.trim().lowercase()
+        val existing = dao.getUserByEmail(normalizedEmail)
+        if (existing != null) {
+            return Result.failure(Exception("An account with this Gmail already exists. Only one account per Gmail is allowed."))
+        }
+
+        val uid = serverUserId?.takeIf { it.isNotBlank() } ?: ("USR-" + (100000..999999).random())
+        val refCode = serverReferralCode?.takeIf { it.isNotBlank() } ?: ("VMAX-" + (100000..999999).random())
+        val cleanedRefCode = referredByCode
+            ?.trim()
+            ?.substringAfterLast("/ref/", referredByCode.trim())
+            ?.trim()
+            ?.uppercase()
+            ?.takeIf { it.isNotBlank() }
+
+        val verifiedUser = UserEntity(
+            id = uid,
+            name = name.trim(),
+            email = normalizedEmail,
+            passwordHash = hashPassword(passwordPlain),
+            country = country,
+            districtState = districtState,
+            cityUpazila = cityUpazila,
+            fullAddress = fullAddress,
+            avatarId = (1..9).random(),
+            isEmailVerified = true,
+            emailOtp = "",
+            kycStatus = "UNVERIFIED",
+            availableBalance = 0.0,
+            holdingBalance = 0.0,
+            bonusBalance = 0.0,
+            referralCode = refCode,
+            referredBy = cleanedRefCode,
+            rewardPoints = 0,
+            tier100Spins = 0,
+            tier1000Spins = 0,
+            role = "USER",
+            isBanned = false,
+            createdAt = System.currentTimeMillis()
+        )
+        dao.insertUser(verifiedUser)
+        return Result.success(verifiedUser)
+    }
+
     suspend fun registerUser(
         name: String,
         email: String,
@@ -302,7 +363,7 @@ class MarketplaceRepository(val dao: AppDao) {
     ): Result<UserEntity> {
         val existing = dao.getUserByEmail(email.trim().lowercase())
         if (existing != null) {
-            return Result.failure(Exception("An account with this email already exists."))
+            return Result.failure(Exception("An account with this Gmail already exists. Only one account per Gmail is allowed."))
         }
 
         val randomId = "USR-" + (100000..999999).random()
