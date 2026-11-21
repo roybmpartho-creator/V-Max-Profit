@@ -1,0 +1,25 @@
+{
+  "name": "nft-trade-backend",
+  "version": "1.0.0",
+  "description": "Production Node.js & Express Backend for NFT TRADE Platform with Binance Pay V2, Nodemailer OTP, and Realtime SSE Stream",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "nodemailer": "^6.9.13",
+    "axios": "^1.7.2",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "mongoose": "^8.4.1",
+    "crypto": "^1.0.1",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.2"
+  }
+}
